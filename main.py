@@ -3,54 +3,37 @@ CLI-приложение для анализа логов Django-приложе�
 
 Обрабатывает файлы логов и генерирует отчёты.
 """
+
 import argparse
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from log_analyzer.parser import parse_log_file
-from log_analyzer.reports.handlers import (
-    generate_handlers_report,
-    merge_reports,
-    format_handlers_report
-)
+from log_analyzer.reports import get_report_generator  # фабрика
+from log_analyzer.reports.base import Report
 
 
-REPORTS = {
-    'handlers': {
-        'generator': generate_handlers_report,
-        'merger': merge_reports,
-        'formatter': format_handlers_report
-    }
-}
-
-
-def process_files(file_paths: List[str], report_name: str) -> Optional[str]:
+def process_files(file_paths: List[str], report_name: str) -> str:
     """Обрабатывает файлы и возвращает сформированный отчёт."""
-    if report_name not in REPORTS:
-        raise ValueError(f"Unknown report: {report_name}. Available reports: {list(REPORTS.keys())}")
-
-    # Проверяем существование файлов
+    # Проверка существования файлов
     for file_path in file_paths:
-        if not Path(file_path).exists():
+        if not Path(file_path).is_file():
             raise FileNotFoundError(f"File not found: {file_path}")
 
-    report_generator = REPORTS[report_name]['generator']
-    report_merger = REPORTS[report_name]['merger']
-    report_formatter = REPORTS[report_name]['formatter']
+    report_generator: Report = get_report_generator(report_name)
 
-    reports = []
+    # Собираем логи со всех файлов
+    all_entries = []
     for file_path in file_paths:
-        log_entries = list(parse_log_file(file_path))
-        report = report_generator(log_entries)
-        reports.append(report)
+        all_entries.extend(parse_log_file(file_path))
 
-    merged_report = report_merger(reports)
-    return report_formatter(merged_report)
+    return report_generator.generate(all_entries)
 
 
 def main():
     """Точка входа CLI-приложения."""
-    parser = argparse.ArgumentParser(description='Analyze Django application logs.')
+    parser = argparse.ArgumentParser(
+        description='Analyze Django application logs.')
     parser.add_argument(
         'files',
         metavar='FILE',
@@ -62,7 +45,7 @@ def main():
         '--report',
         type=str,
         required=True,
-        choices=REPORTS.keys(),
+        choices=['handlers'],
         help='report type to generate'
     )
 
